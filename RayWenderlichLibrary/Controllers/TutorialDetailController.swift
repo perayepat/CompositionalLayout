@@ -47,6 +47,8 @@ final class TutorialDetailViewController: UIViewController {
     @IBOutlet weak var queueButton: UIButton!
     @IBOutlet weak var collectionView: UICollectionView!
     
+    private var dataSource: UICollectionViewDiffableDataSource<Section, Video>!
+    
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
@@ -77,6 +79,11 @@ final class TutorialDetailViewController: UIViewController {
         
         let buttonTitle = tutorial.isQueued ? "Remove from queue" : "Add to queue"
         queueButton.setTitle(buttonTitle, for: .normal)
+        
+        collectionView.register(TitleSupplementaryView.self, forSupplementaryViewOfKind: UICollectionView.elementKindSectionHeader, withReuseIdentifier: TitleSupplementaryView.reuseIdentifier)
+        collectionView.collectionViewLayout = configureCollectionView()
+        configureDataSource()
+        configureSnapshot()
     }
     
     @IBAction func toggleQueued() {
@@ -91,3 +98,78 @@ final class TutorialDetailViewController: UIViewController {
         }
     }
 }
+// MARK: - Collection View -
+
+extension TutorialDetailViewController {
+  func configureCollectionView() -> UICollectionViewLayout {
+    let sectionProvider = { (sectionIndex: Int, layoutEnvironment: NSCollectionLayoutEnvironment) -> NSCollectionLayoutSection? in
+        
+      let itemSize = NSCollectionLayoutSize(widthDimension: .fractionalWidth(1.0),
+                                           heightDimension: .fractionalHeight(1.0))
+      let item = NSCollectionLayoutItem(layoutSize: itemSize)
+
+      let groupSize = NSCollectionLayoutSize(widthDimension: .fractionalWidth(1.0),
+                                            heightDimension: .absolute(44))
+      let group = NSCollectionLayoutGroup.horizontal(layoutSize: groupSize,
+                                                       subitems: [item])
+
+      let section = NSCollectionLayoutSection(group: group)
+      section.contentInsets = NSDirectionalEdgeInsets(top: 10, leading: 10, bottom: 20, trailing: 10)
+      
+      let headerSize = NSCollectionLayoutSize(widthDimension: .fractionalWidth(1.0), heightDimension: .estimated(44))
+      let sectionHeader = NSCollectionLayoutBoundarySupplementaryItem(layoutSize: headerSize, elementKind: UICollectionView.elementKindSectionHeader, alignment: .top)
+      section.boundarySupplementaryItems = [sectionHeader]
+      
+      return section
+    }
+    
+    let configuration = UICollectionViewCompositionalLayoutConfiguration()
+            
+    return UICollectionViewCompositionalLayout(sectionProvider: sectionProvider, configuration: configuration)
+  }
+}
+
+// MARK: - Diffable Data Source -
+
+extension TutorialDetailViewController {
+  func configureDataSource() {
+    dataSource = UICollectionViewDiffableDataSource<Section, Video>(collectionView: collectionView) { (collectionView: UICollectionView, indexPath: IndexPath, video: Video) in
+        
+      guard let cell = collectionView.dequeueReusableCell(withReuseIdentifier: ContentCell.reuseIdentifier, for: indexPath) as? ContentCell else { return nil }
+      
+      cell.textLabel.text = video.title
+      
+      return cell
+    }
+
+    dataSource.supplementaryViewProvider = { [weak self] (
+      collectionView: UICollectionView,
+      kind: String,
+      indexPath: IndexPath) -> UICollectionReusableView? in
+      
+      if let self = self, let titleSupplementary = collectionView.dequeueReusableSupplementaryView(ofKind: kind, withReuseIdentifier: TitleSupplementaryView.reuseIdentifier, for: indexPath) as? TitleSupplementaryView {
+
+        let section = self.dataSource.snapshot().sectionIdentifiers[indexPath.section]
+        titleSupplementary.textLabel.text = section.title
+
+        return titleSupplementary
+      } else {
+        fatalError("Cannot create new supplementary")
+      }
+      
+      return nil
+    }
+  }
+  
+  func configureSnapshot() {
+    var currentSnapshot = NSDiffableDataSourceSnapshot<Section, Video>()
+    
+    tutorial.content.forEach { section in
+      currentSnapshot.appendSections([section])
+      currentSnapshot.appendItems(section.videos)
+    }
+    
+    dataSource.apply(currentSnapshot, animatingDifferences: false)
+  }
+}
+
